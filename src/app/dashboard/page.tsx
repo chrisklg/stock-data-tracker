@@ -5,6 +5,16 @@ import { useEffect, useState } from "react";
 import Header from "../ui/Header";
 import FavoriteButton from "../ui/FavoriteButton";
 import FavoritesList from "../ui/FavoritesList";
+import CandlestickChart from "../ui/CandlestickChart";
+
+// Type for search results -
+type SearchResult = {
+  symbol: string;
+  name: string;
+  type: string;
+  region: string;
+  currency: string;
+};
 
 export default function Page() {
   const [stockData, setStockData] = useState<ProcessedStockResponse | null>(
@@ -14,6 +24,12 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [symbol, setSymbol] = useState("AAPL"); // Default APPLE stocks
 
+  // Search functionality
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
   /**
    * fetch stock data from current company
    * @param stockSymbol company's short symbol
@@ -21,10 +37,13 @@ export default function Page() {
   const fetchStockData = async (stockSymbol: string) => {
     setLoading(true);
     setError(null);
+    setShowSearchResults(false); // Hide search results when fetching
 
     try {
-      //Call my api for fetching daily stock data
-      const response = await fetch(`/api/stocks?symbol=${stockSymbol}`);
+      // Call Next.js API
+      const response = await fetch(
+        `/api/stocks?symbol=${stockSymbol}&days=360`
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -33,6 +52,7 @@ export default function Page() {
 
       const data: ProcessedStockResponse = await response.json();
       setStockData(data);
+      console.log("Stock data received:", data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       console.error("Frontend Error:", err);
@@ -41,20 +61,87 @@ export default function Page() {
     }
   };
 
+  /**
+   * Search for stock symbols
+   */
+  const searchSymbols = async (keywords: string) => {
+    if (!keywords.trim()) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const response = await fetch(
+        `/api/search?keywords=${encodeURIComponent(keywords)}`
+      );
+
+      if (!response.ok) {
+        console.error("Search failed:", response.status);
+        setSearchResults([]);
+        return;
+      }
+
+      const results: SearchResult[] = await response.json();
+      setSearchResults(results);
+      setShowSearchResults(true);
+    } catch (err) {
+      console.error("Search error:", err);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   useEffect(() => {
     fetchStockData(symbol);
   }, []);
 
   /**
-   * Update when symbol changed
+   * Handle search input changes
+   */
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    // Debounce search
+    const timeoutId = setTimeout(() => {
+      if (query.length >= 2) {
+        searchSymbols(query);
+      } else {
+        setSearchResults([]);
+        setShowSearchResults(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  };
+
+  /**
+   * Handle selecting a search result
+   */
+  const handleSelectSearchResult = (
+    selectedSymbol: string,
+    companyName: string
+  ) => {
+    setSymbol(selectedSymbol);
+    setSearchQuery(`${selectedSymbol} - ${companyName}`);
+    setShowSearchResults(false);
+    fetchStockData(selectedSymbol);
+  };
+
+  /**
+   * Update when symbol changed via form submission
    */
   const handleSymbolChange = (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
     const newSymbol = formData.get("symbol") as string;
     if (newSymbol) {
-      setSymbol(newSymbol.toUpperCase());
-      fetchStockData(newSymbol);
+      const symbolOnly = newSymbol.split(" ")[0].toUpperCase(); // Extract symbol if format is "AAPL - Apple"
+      setSymbol(symbolOnly);
+      fetchStockData(symbolOnly);
     }
   };
 
@@ -63,6 +150,7 @@ export default function Page() {
    */
   const handleSelectFromFavorites = (favoriteSymbol: string) => {
     setSymbol(favoriteSymbol);
+    setSearchQuery(favoriteSymbol);
     fetchStockData(favoriteSymbol);
   };
 
@@ -70,54 +158,73 @@ export default function Page() {
     <>
       {/* Header */}
       <Header />
-      <main className="container mx-auto p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <main className="w-full p-10">
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Search Form */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Enhanced Search Form */}
             <div className="mb-6">
               <form
                 onSubmit={handleSymbolChange}
-                className="flex gap-2 max-w-md"
+                className="flex gap-2 max-w-md relative"
               >
-                <input
-                  type="text"
-                  name="symbol"
-                  placeholder="Enter stock symbol (e.g., AAPL)"
-                  className="border border-gray-300 rounded px-3 py-2 flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  defaultValue={symbol}
-                />
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    name="symbol"
+                    placeholder="Search stocks (e.g., AAPL, Apple, Tesla)"
+                    className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={searchQuery}
+                    onChange={handleSearchInputChange}
+                    autoComplete="off"
+                  />
+
+                  {/* Search Results Dropdown */}
+                  {showSearchResults && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-b-md shadow-lg z-10 max-h-60 overflow-y-auto">
+                      {isSearching ? (
+                        <div className="p-3 text-gray-500">Searching...</div>
+                      ) : searchResults.length > 0 ? (
+                        searchResults.map((result) => (
+                          <div
+                            key={result.symbol}
+                            className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            onClick={() =>
+                              handleSelectSearchResult(
+                                result.symbol,
+                                result.name
+                              )
+                            }
+                          >
+                            <div className="font-semibold text-blue-600">
+                              {result.symbol}
+                            </div>
+                            <div className="text-sm text-gray-600 truncate">
+                              {result.name}
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              {result.region} • {result.currency}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-3 text-gray-500">
+                          No results found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit"
                   disabled={loading}
                   className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Loading..." : "Search"}
+                  {loading ? "Loading..." : "Get Data"}
                 </button>
               </form>
             </div>
-
-            {/* Loading State */}
-            {loading && (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                <p className="mt-2 text-gray-600">
-                  Fetching stock data for {symbol}...
-                </p>
-              </div>
-            )}
-
-            {/* Error State */}
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                <strong>Error:</strong> {error}
-                <details className="mt-2 text-sm">
-                  <summary className="cursor-pointer">Debug Info</summary>
-                  <p>Symbol: {symbol}</p>
-                  <p>Check console for more details</p>
-                </details>
-              </div>
-            )}
 
             {/* Display Data */}
             {stockData && !loading && (
@@ -131,7 +238,7 @@ export default function Page() {
                     <FavoriteButton
                       stock={{
                         symbol: stockData.metadata.symbol,
-                        name: stockData.metadata.symbol, // symbol as company name currently
+                        name: stockData.metadata.symbol,
                         lastPrice: stockData.data[0]?.close,
                       }}
                       size={28}
@@ -207,6 +314,13 @@ export default function Page() {
               className="sticky top-6"
             />
           </div>
+
+          {/* Candlestick Chart */}
+          <CandlestickChart
+            stockData={stockData}
+            loading={loading}
+            height={500}
+          />
         </div>
       </main>
     </>
