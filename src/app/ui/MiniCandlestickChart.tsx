@@ -54,7 +54,7 @@ export default function MiniCandlestickChart({
   const convertToChartData = (
     data: DailyStockData[]
   ): CandlestickData<Time>[] => {
-    const sortedData = [...data].sort((a, b) => a.time - b.time);
+    const sortedData = [...data].sort((a, b) => a.time! - b.time!);
     return sortedData.map((item) => ({
       time: item.time as Time,
       open: item.open,

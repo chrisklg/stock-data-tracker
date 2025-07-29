@@ -1,5 +1,5 @@
 export interface DailyStockData {
-  time: number;
+  time?: number;
   date: string;
   open: number;
   high: number;
