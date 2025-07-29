@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { ProcessedStockResponse } from "./types/alphaVantageResponse";
+import { ProcessedStockResponse } from "./types/processedStockResponse";
 
 /**
  * Fetch stock data from API
