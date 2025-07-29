@@ -11,7 +11,9 @@ import {
 import { DailyStockData } from "@/lib/types/stockData";
 import FavoriteButton from "./FavoriteButton";
 import { useStockData } from "@/lib/util";
+
 const DAYS = 360;
+
 interface MiniCandlestickChartProps {
   symbol: string;
   height?: number;
@@ -62,7 +64,7 @@ export default function MiniCandlestickChart({
     }));
   };
 
-  // Initialize chart
+  // Initialize chart with dark mode support
   useEffect(() => {
     const initializeChart = () => {
       if (!chartContainerRef.current) {
@@ -75,23 +77,29 @@ export default function MiniCandlestickChart({
         chartRef.current.remove();
       }
 
+      // Check if dark mode is active
+      const isDarkMode = document.documentElement.classList.contains("dark");
+
       const chartOptions = {
         layout: {
-          textColor: "#64748b",
-          background: { type: ColorType.Solid, color: "#f8fafc" },
+          textColor: isDarkMode ? "#e2e8f0" : "#64748b",
+          background: {
+            type: ColorType.Solid,
+            color: isDarkMode ? "#1e293b" : "#f8fafc",
+          },
         },
         width: chartContainerRef.current.clientWidth || 300,
         height: height - 100, // Leave space for header
         grid: {
-          vertLines: { color: "#e2e8f0" },
-          horzLines: { color: "#e2e8f0" },
+          vertLines: { color: isDarkMode ? "#374151" : "#e2e8f0" },
+          horzLines: { color: isDarkMode ? "#374151" : "#e2e8f0" },
         },
         rightPriceScale: {
-          borderColor: "#cbd5e1",
+          borderColor: isDarkMode ? "#4b5563" : "#cbd5e1",
           scaleMargins: { top: 0.1, bottom: 0.1 },
         },
         timeScale: {
-          borderColor: "#cbd5e1",
+          borderColor: isDarkMode ? "#4b5563" : "#cbd5e1",
           timeVisible: false, // Hide time
           secondsVisible: false,
         },
@@ -104,7 +112,7 @@ export default function MiniCandlestickChart({
         const chart = createChart(chartContainerRef.current, chartOptions);
         chartRef.current = chart;
 
-        // Set chart design
+        // Set chart design with dark mode support
         const candlestickSeries = chart.addSeries(CandlestickSeries, {
           upColor: "#10b981",
           downColor: "#ef4444",
@@ -183,16 +191,16 @@ export default function MiniCandlestickChart({
   if (loading) {
     return (
       <div
-        className="bg-white rounded-lg shadow-md border border-gray-200"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700"
         style={{ height: `${height}px` }}
       >
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex justify-between items-center">
             <div>
-              <div className="h-6 bg-gray-200 rounded w-16 animate-pulse"></div>
-              <div className="h-4 bg-gray-200 rounded w-20 mt-1 animate-pulse"></div>
+              <div className="h-6 bg-gray-200 dark:bg-gray-600 rounded w-16 animate-pulse"></div>
+              <div className="h-4 bg-gray-200 dark:bg-gray-600 rounded w-20 mt-1 animate-pulse"></div>
             </div>
-            <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
+            <div className="w-8 h-8 bg-gray-200 dark:bg-gray-600 rounded-full animate-pulse"></div>
           </div>
         </div>
         <div
@@ -200,8 +208,8 @@ export default function MiniCandlestickChart({
           style={{ height: `${height - 80}px` }}
         >
           <div className="flex items-center space-x-2">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-            <span className="text-gray-500 text-sm">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 dark:border-blue-400"></div>
+            <span className="text-gray-500 dark:text-gray-400 text-sm">
               Loading chart for {symbol}...
             </span>
           </div>
@@ -213,14 +221,18 @@ export default function MiniCandlestickChart({
   if (error || !stockData) {
     return (
       <div
-        className="bg-white rounded-lg shadow-md border border-gray-200"
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700"
         style={{ height: `${height}px` }}
       >
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="font-bold text-gray-900">{symbol}</h3>
-              <p className="text-sm text-red-500">Error loading data</p>
+              <h3 className="font-bold text-gray-900 dark:text-white">
+                {symbol}
+              </h3>
+              <p className="text-sm text-red-500 dark:text-red-400">
+                Error loading data
+              </p>
             </div>
             <FavoriteButton stock={{ symbol, name: symbol }} size={20} />
           </div>
@@ -230,12 +242,12 @@ export default function MiniCandlestickChart({
           style={{ height: `${height - 80}px` }}
         >
           <div className="text-center">
-            <div className="text-red-500 text-sm mb-2">
+            <div className="text-red-500 dark:text-red-400 text-sm mb-2">
               {error || "Failed to load chart data"}
             </div>
             <button
               onClick={handleRetry}
-              className="text-blue-500 hover:text-blue-700 text-sm underline"
+              className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm underline transition-colors"
             >
               Retry
             </button>
@@ -255,15 +267,17 @@ export default function MiniCandlestickChart({
 
   return (
     <div
-      className="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow"
+      className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 hover:shadow-lg dark:hover:shadow-2xl transition-shadow"
       style={{ height: `${height}px` }}
     >
       {/* Mini Chart Header */}
-      <div className="p-4 border-b border-gray-100">
+      <div className="p-4 border-b border-gray-100 dark:border-gray-700">
         <div className="flex justify-between items-start">
           <div className="flex-1">
-            <h3 className="font-bold text-lg text-gray-900">{symbol}</h3>
-            <div className="text-sm text-gray-500">
+            <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+              {symbol}
+            </h3>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               Last: {stockData.metadata.lastRefreshed}
             </div>
           </div>
@@ -279,12 +293,14 @@ export default function MiniCandlestickChart({
 
         {/* Price Info */}
         <div className="mt-2">
-          <div className="text-xl font-bold text-gray-900">
+          <div className="text-xl font-bold text-gray-900 dark:text-white">
             ${latestData.close.toFixed(2)}
           </div>
           <div
             className={`text-sm font-medium ${
-              priceChange >= 0 ? "text-green-600" : "text-red-600"
+              priceChange >= 0
+                ? "text-green-600 dark:text-green-400"
+                : "text-red-600 dark:text-red-400"
             }`}
           >
             {priceChange >= 0 ? "+" : ""}
