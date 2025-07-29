@@ -59,7 +59,7 @@ export default function FavoritesWatchlist({
           </h3>
           <p className="text-gray-500 dark:text-gray-400 text-center max-w-md mb-6">
             Search for stocks and click the crown icon to add them to your
-            watchlist. You'll see mini charts for each favorite here.
+            watchlist. You will see mini charts for each favorite here.
           </p>
           {onAddFavorite && (
             <button

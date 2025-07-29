@@ -12,7 +12,7 @@ export default function StockSearch({
   onBack,
   onStockAdded,
 }: StockSearchProps) {
-  // Use the custom hook for stock data management
+  // Use the custom hook
   const {
     stockData,
     loading,
@@ -21,7 +21,7 @@ export default function StockSearch({
     clearData,
   } = useStockData();
 
-  const [symbol, setSymbol] = useState("");
+  const [, setSymbol] = useState("");
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,19 +73,6 @@ export default function StockSearch({
     const query = e.target.value;
     setSearchQuery(query);
     setSearchError(null);
-
-    // Clear previous timeout
-    const timeoutId = setTimeout(() => {
-      if (query.length >= 2) {
-        searchSymbols(query);
-      } else {
-        setSearchResults([]);
-        setShowSearchResults(false);
-      }
-    }, 300);
-
-    // Cleanup function would need to be handled differently in a real scenario
-    // This is a simplified version
   };
 
   /**
@@ -140,7 +127,7 @@ export default function StockSearch({
    * Reset all search-related state
    */
   const resetSearchState = () => {
-    clearData(); // Clear stock data using the hook
+    clearData();
     setSymbol("");
     setSearchQuery("");
     setSearchError(null);
@@ -271,7 +258,6 @@ export default function StockSearch({
             <button
               onClick={() => {
                 setSearchError(null);
-                // Note: stockError is cleared by the hook's clearData function
               }}
               className="ml-2 text-red-500 hover:text-red-700"
             >
@@ -359,7 +345,7 @@ export default function StockSearch({
                     d="M12 6v6m0 0v6m0-6h6m-6 0H6"
                   />
                 </svg>
-                Add to Favorites
+                Add to Watchlist
               </button>
               <button
                 onClick={handleBack}
