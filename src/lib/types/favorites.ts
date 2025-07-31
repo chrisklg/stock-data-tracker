@@ -7,8 +7,10 @@ export interface FavoriteStock {
 
 export interface FavoritesContextType {
   favorites: FavoriteStock[];
-  addFavorite: (stock: FavoriteStock) => void;
-  removeFavorite: (symbol: string) => void;
-  isFavorite: (symbol: string) => boolean;
   loading: boolean;
+  error: string | null;
+  addFavorite: (stock: Omit<FavoriteStock, "addedAt">) => Promise<void>;
+  removeFavorite: (symbol: string) => Promise<void>;
+  isFavorite: (symbol: string) => boolean;
+  refreshFavorites: () => Promise<void>;
 }

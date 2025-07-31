@@ -1,20 +1,7 @@
 import { useState, useCallback } from "react";
 import { ProcessedStockResponse } from "./types/processedStockResponse";
-
-export interface SearchResult {
-  symbol: string;
-  name: string;
-  type: string;
-  region: string;
-  currency: string;
-}
-
-export interface FavoriteStock {
-  symbol: string;
-  name?: string;
-  addedAt: string;
-  lastPrice?: number;
-}
+import { SearchResult } from "./types/searchResult";
+import { FavoriteStock } from "./types/favorites";
 
 /**
  * Fetch stock data from API with caching support
@@ -29,8 +16,14 @@ export const fetchStockData = async (
   useCache: boolean = true
 ): Promise<ProcessedStockResponse> => {
   try {
+    // Clean and validate the symbol
+    const cleanSymbol = stockSymbol.trim().toUpperCase();
+    if (!cleanSymbol) {
+      throw new Error("Stock symbol is required");
+    }
+
     const url = new URL("/api/stocks", window.location.origin);
-    url.searchParams.set("symbol", stockSymbol);
+    url.searchParams.set("symbol", cleanSymbol);
     url.searchParams.set("days", days.toString());
     url.searchParams.set("use_cache", useCache.toString());
 
@@ -44,6 +37,13 @@ export const fetchStockData = async (
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+
+      if (response.status === 404) {
+        throw new Error(
+          `No data points found for ${cleanSymbol}. Please verify the symbol is correct.`
+        );
+      }
+
       throw new Error(
         errorData.error || `Failed to fetch data (${response.status})`
       );
@@ -55,6 +55,10 @@ export const fetchStockData = async (
       throw new Error("Invalid response format from API");
     }
 
+    if (data.data.length === 0) {
+      throw new Error(`No data available for ${cleanSymbol}`);
+    }
+
     return data;
   } catch (err) {
     console.error("Stock data fetch error:", err);
@@ -63,7 +67,7 @@ export const fetchStockData = async (
       if (err.name === "TimeoutError") {
         throw new Error("Request timeout - please try again");
       }
-      if (err.message.includes("fetch")) {
+      if (err.message.includes("fetch") && !err.message.includes("No data")) {
         throw new Error("Network error - please check your connection");
       }
     }
@@ -73,8 +77,8 @@ export const fetchStockData = async (
 };
 
 /**
- * Search for stock symbols
- * @param keywords search terms
+ * Search for stock symbols with enhanced support for company names and WKN
+ * @param keywords search terms (symbol, company name, or WKN)
  * @returns Promise<SearchResult[]> or throws error
  */
 export const searchStocks = async (
@@ -85,19 +89,31 @@ export const searchStocks = async (
       return [];
     }
 
+    const cleanKeywords = keywords.trim();
+
+    // Don't search for very short queries to avoid too many results
+    if (cleanKeywords.length < 2) {
+      return [];
+    }
+
     const url = new URL("/api/search", window.location.origin);
-    url.searchParams.set("keywords", keywords.trim());
+    url.searchParams.set("keywords", cleanKeywords);
 
     const response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
-      signal: AbortSignal.timeout(10000), // 10 seconds
+      signal: AbortSignal.timeout(30000), // Increased to 30 seconds to match search
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+
+      if (response.status === 404) {
+        return []; // No results found, return empty array
+      }
+
       throw new Error(errorData.error || `Search failed (${response.status})`);
     }
 
@@ -108,7 +124,12 @@ export const searchStocks = async (
 
     if (err instanceof Error) {
       if (err.name === "TimeoutError") {
-        throw new Error("Search timeout - please try again");
+        throw new Error(
+          "Search timeout - please try again with a shorter query"
+        );
+      }
+      if (err.message.includes("fetch")) {
+        throw new Error("Network error - please check your connection");
       }
     }
 
@@ -161,7 +182,7 @@ export const addFavorite = async (
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        symbol: stock.symbol,
+        symbol: stock.symbol.trim().toUpperCase(),
         name: stock.name,
       }),
       signal: AbortSignal.timeout(10000),
@@ -189,8 +210,9 @@ export const addFavorite = async (
  */
 export const removeFavorite = async (symbol: string): Promise<void> => {
   try {
+    const cleanSymbol = symbol.trim().toUpperCase();
     const response = await fetch(
-      `/api/favorites/${encodeURIComponent(symbol)}`,
+      `/api/favorites/${encodeURIComponent(cleanSymbol)}`,
       {
         method: "DELETE",
         headers: {
@@ -202,6 +224,15 @@ export const removeFavorite = async (symbol: string): Promise<void> => {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+
+      if (response.status === 404) {
+        // If it's not found, consider it already removed
+        console.warn(
+          `Stock ${cleanSymbol} not found in favorites, considering it removed`
+        );
+        return;
+      }
+
       throw new Error(
         errorData.error || `Failed to remove favorite (${response.status})`
       );
@@ -219,8 +250,9 @@ export const removeFavorite = async (symbol: string): Promise<void> => {
  */
 export const checkFavorite = async (symbol: string): Promise<boolean> => {
   try {
+    const cleanSymbol = symbol.trim().toUpperCase();
     const response = await fetch(
-      `/api/favorites/${encodeURIComponent(symbol)}/check`,
+      `/api/favorites/${encodeURIComponent(cleanSymbol)}/check`,
       {
         method: "GET",
         headers: {
@@ -232,6 +264,11 @@ export const checkFavorite = async (symbol: string): Promise<boolean> => {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+
+      if (response.status === 404) {
+        return false; // Not found means not a favorite
+      }
+
       throw new Error(
         errorData.error || `Failed to check favorite (${response.status})`
       );
@@ -241,7 +278,8 @@ export const checkFavorite = async (symbol: string): Promise<boolean> => {
     return result.isFavorite === true;
   } catch (err) {
     console.error("Check favorite error:", err);
-    throw err;
+    // Return false on error to avoid blocking UI
+    return false;
   }
 };
 
@@ -351,30 +389,30 @@ export const useStockSearch = (debounceMs: number = 300) => {
 
   const searchStocksDebounced = useCallback(
     async (keywords: string) => {
-      if (!keywords.trim()) {
+      if (!keywords.trim() || keywords.trim().length < 2) {
         setSearchResults([]);
         setSearchError(null);
+        setSearchLoading(false);
         return;
       }
 
       setSearchLoading(true);
       setSearchError(null);
 
-      const timeoutId = setTimeout(async () => {
-        try {
-          const results = await searchStocks(keywords);
-          setSearchResults(results);
-        } catch (err) {
-          const errorMessage =
-            err instanceof Error ? err.message : "Search failed";
-          setSearchError(errorMessage);
-          setSearchResults([]);
-        } finally {
-          setSearchLoading(false);
-        }
-      }, debounceMs);
+      try {
+        // Add a small delay for debouncing
+        await new Promise((resolve) => setTimeout(resolve, debounceMs));
 
-      return () => clearTimeout(timeoutId);
+        const results = await searchStocks(keywords);
+        setSearchResults(results);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Search failed";
+        setSearchError(errorMessage);
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
     },
     [debounceMs]
   );
@@ -414,9 +452,9 @@ export const useFavoritesManager = () => {
         err instanceof Error ? err.message : "Failed to load favorites";
       setFavoritesError(errorMessage);
 
-      // Fallback to localStorage
+      // Fallback to localStorage for offline functionality
       try {
-        const stored = localStorage.getItem("favorites");
+        const stored = localStorage?.getItem("favorites");
         if (stored) {
           const localFavorites = JSON.parse(stored);
           setFavorites(Array.isArray(localFavorites) ? localFavorites : []);
@@ -433,6 +471,7 @@ export const useFavoritesManager = () => {
     async (stock: Omit<FavoriteStock, "addedAt">) => {
       const tempFavorite: FavoriteStock = {
         ...stock,
+        symbol: stock.symbol.trim().toUpperCase(),
         addedAt: new Date().toISOString(),
       };
 
@@ -455,12 +494,16 @@ export const useFavoritesManager = () => {
           )
         );
 
-        // Sync to localStorage
-        const updatedFavorites = favorites.filter(
-          (f) => f.symbol.toLowerCase() !== stock.symbol.toLowerCase()
-        );
-        updatedFavorites.unshift(newFavorite);
-        localStorage.setItem("favorites", JSON.stringify(updatedFavorites));
+        // Sync to localStorage for offline functionality
+        try {
+          const updatedFavorites = favorites.filter(
+            (f) => f.symbol.toLowerCase() !== stock.symbol.toLowerCase()
+          );
+          updatedFavorites.unshift(newFavorite);
+          localStorage?.setItem("favorites", JSON.stringify(updatedFavorites));
+        } catch (localErr) {
+          console.error("Error syncing to localStorage:", localErr);
+        }
 
         return newFavorite;
       } catch (err) {
@@ -478,24 +521,38 @@ export const useFavoritesManager = () => {
 
   const removeFromFavorites = useCallback(
     async (symbol: string) => {
+      const cleanSymbol = symbol.trim().toUpperCase();
       const previousFavorites = favorites;
 
       // Optimistic update
       setFavorites((prev) =>
-        prev.filter((f) => f.symbol.toLowerCase() !== symbol.toLowerCase())
+        prev.filter((f) => f.symbol.toLowerCase() !== cleanSymbol.toLowerCase())
       );
 
       try {
-        await removeFavorite(symbol);
+        await removeFavorite(cleanSymbol);
 
-        // Sync to localStorage
-        const updatedFavorites = favorites.filter(
-          (f) => f.symbol.toLowerCase() !== symbol.toLowerCase()
-        );
-        localStorage.setItem("favorites", JSON.stringify(updatedFavorites));
+        // Sync to localStorage for offline functionality
+        try {
+          const updatedFavorites = favorites.filter(
+            (f) => f.symbol.toLowerCase() !== cleanSymbol.toLowerCase()
+          );
+          localStorage?.setItem("favorites", JSON.stringify(updatedFavorites));
+        } catch (localErr) {
+          console.error("Error syncing to localStorage:", localErr);
+        }
       } catch (err) {
         // Revert optimistic update
         setFavorites(previousFavorites);
+
+        // Check if it was a 404 error (stock not found) - in that case, keep the optimistic update
+        if (err instanceof Error && err.message.includes("not found")) {
+          console.warn(
+            "Stock was not found in favorites, keeping local removal"
+          );
+          return; // Don't revert the local change
+        }
+
         throw err;
       }
     },
@@ -504,8 +561,9 @@ export const useFavoritesManager = () => {
 
   const isFavorite = useCallback(
     (symbol: string): boolean => {
+      const cleanSymbol = symbol.trim().toUpperCase();
       return favorites.some(
-        (f) => f.symbol.toLowerCase() === symbol.toLowerCase()
+        (f) => f.symbol.toLowerCase() === cleanSymbol.toLowerCase()
       );
     },
     [favorites]
@@ -567,4 +625,27 @@ export const calculatePriceChange = (
     formattedChange: formatCurrency(Math.abs(change)),
     formattedChangePercent: formatPercentage(changePercent),
   };
+};
+
+/**
+ * Utility function to validate stock symbol format
+ */
+export const isValidStockSymbol = (symbol: string): boolean => {
+  if (!symbol || typeof symbol !== "string") return false;
+
+  const cleanSymbol = symbol.trim().toUpperCase();
+
+  // Basic validation: 1-10 characters, letters and numbers only
+  const symbolRegex = /^[A-Z0-9]{1,10}$/;
+  return symbolRegex.test(cleanSymbol);
+};
+
+/**
+ * Utility function to sanitize search input
+ */
+export const sanitizeSearchInput = (input: string): string => {
+  if (!input || typeof input !== "string") return "";
+
+  // Remove special characters but keep spaces, letters, numbers, and common symbols
+  return input.trim().replace(/[<>\"'&]/g, "");
 };
