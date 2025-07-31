@@ -76,6 +76,20 @@ class DatabaseManager:
         async with self.pool.acquire() as connection:
             yield connection
 
+    def _convert_row_to_dict(self, row) -> dict:
+        """Convert database row to dict"""
+        if not row:
+            return {}
+
+        result = dict(row)
+
+        # Convert UUID fields to strings
+        for key, value in result.items():
+            if hasattr(value, "hex"):  # UUID object
+                result[key] = str(value)
+
+        return result
+
     # Stock operations
     async def get_or_create_stock(
         self, symbol: str, name: Optional[str] = None
@@ -96,7 +110,8 @@ class DatabaseManager:
 
                 if row:
                     logger.info(f"Found existing stock: {symbol}")
-                    return StockModel(**dict(row))
+                    row_dict = self._convert_row_to_dict(row)
+                    return StockModel(**row_dict)
 
                 # Create new stock
                 logger.info(f"Creating new stock: {symbol}")
@@ -114,7 +129,8 @@ class DatabaseManager:
                     raise Exception(f"Failed to create stock {symbol}")
 
                 logger.info(f"Successfully created stock: {symbol}")
-                return StockModel(**dict(row))
+                row_dict = self._convert_row_to_dict(row)
+                return StockModel(**row_dict)
 
             except Exception as e:
                 logger.error(f"Error in get_or_create_stock for {symbol}: {e}")
@@ -126,15 +142,12 @@ class DatabaseManager:
     ) -> FavoriteModel:
         """Add stock to favorites"""
         try:
-            logger.info(f"DEBUG: Adding favorite: {symbol}, {name}")
 
             # Ensure stock exists
             stock = await self.get_or_create_stock(symbol, name)
-            logger.info(f"DEBUG: Stock ready: {stock.id}")
 
             async with self.get_connection() as conn:
                 try:
-                    logger.info(f"DEBUG: Inserting into favorites table")
                     row = await conn.fetchrow(
                         """
                         INSERT INTO favorites (stock_id)
@@ -147,14 +160,15 @@ class DatabaseManager:
                     if not row:
                         raise Exception("Failed to insert favorite")
 
-                    logger.info(f"DEBUG: Insert successful: {row}")
+                    logger.info(f"DEBUG: Insert successful")
+                    row_dict = self._convert_row_to_dict(row)
 
                     return FavoriteModel(
-                        id=row["id"],
-                        stock_id=row["stock_id"],
+                        id=row_dict["id"],
+                        stock_id=row_dict["stock_id"],
                         symbol=stock.symbol,
                         name=stock.name,
-                        added_at=row["added_at"],
+                        added_at=row_dict["added_at"],
                     )
 
                 except asyncpg.UniqueViolationError:
@@ -175,7 +189,8 @@ class DatabaseManager:
                             f"Favorite exists but could not retrieve it for {symbol}"
                         )
 
-                    return FavoriteModel(**dict(row))
+                    row_dict = self._convert_row_to_dict(row)
+                    return FavoriteModel(**row_dict)
 
         except Exception as e:
             logger.error(f"DEBUG: Exception in add_favorite: {e}")
@@ -229,7 +244,12 @@ class DatabaseManager:
                 """
                 )
 
-                return [FavoriteModel(**dict(row)) for row in rows]
+                result = []
+                for row in rows:
+                    row_dict = self._convert_row_to_dict(row)
+                    result.append(FavoriteModel(**row_dict))
+                return result
+
             except Exception as e:
                 logger.error(f"Error getting favorites: {e}")
                 return []
@@ -324,7 +344,12 @@ class DatabaseManager:
                     max(1, days),  # Ensure positive limit
                 )
 
-                return [StockPriceModel(**dict(row)) for row in rows]
+                result = []
+                for row in rows:
+                    row_dict = self._convert_row_to_dict(row)
+                    result.append(StockPriceModel(**row_dict))
+                return result
+
             except Exception as e:
                 logger.error(f"Error getting stock prices for {symbol}: {e}")
                 return []
