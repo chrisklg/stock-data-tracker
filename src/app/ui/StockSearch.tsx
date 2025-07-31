@@ -1,5 +1,5 @@
 import { SearchResult } from "@/lib/types/searchResult";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useFavorites } from "../context/FavoritesContext";
 import { useStockData } from "@/lib/util";
 
@@ -29,11 +29,14 @@ export default function StockSearch({
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchTakingLong, setSearchTakingLong] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { addFavorite } = useFavorites();
 
   /**
-   * Search for stock symbols
+   * Search for stock symbols with enhanced search terms
    */
   const searchSymbols = async (keywords: string) => {
     if (!keywords.trim()) {
@@ -46,20 +49,80 @@ export default function StockSearch({
     setSearchError(null);
 
     try {
-      const response = await fetch(
-        `/api/search?keywords=${encodeURIComponent(keywords)}`
-      );
+      // Enhanced search with better encoding and error handling
+      const encodedKeywords = encodeURIComponent(keywords.trim());
+      const response = await fetch(`/api/search?keywords=${encodedKeywords}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
 
       if (!response.ok) {
-        throw new Error(`Search failed with status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || `Search failed with status: ${response.status}`
+        );
       }
 
       const results: SearchResult[] = await response.json();
-      setSearchResults(results);
+
+      // Filter and sort results for better relevance
+      const filteredResults = results
+        .filter((result) => result.symbol && result.name) // Ensure we have both symbol and name
+        .sort((a, b) => {
+          const queryLower = keywords.toLowerCase();
+          const aSymbolMatch = a.symbol.toLowerCase().includes(queryLower);
+          const bSymbolMatch = b.symbol.toLowerCase().includes(queryLower);
+          const aNameMatch = a.name.toLowerCase().includes(queryLower);
+          const bNameMatch = b.name.toLowerCase().includes(queryLower);
+
+          // Prioritize exact symbol matches
+          if (a.symbol.toLowerCase() === queryLower) return -1;
+          if (b.symbol.toLowerCase() === queryLower) return 1;
+
+          // Then symbol starts with query
+          if (
+            a.symbol.toLowerCase().startsWith(queryLower) &&
+            !b.symbol.toLowerCase().startsWith(queryLower)
+          )
+            return -1;
+          if (
+            b.symbol.toLowerCase().startsWith(queryLower) &&
+            !a.symbol.toLowerCase().startsWith(queryLower)
+          )
+            return 1;
+
+          // Then any symbol match vs name match
+          if (aSymbolMatch && !bSymbolMatch) return -1;
+          if (bSymbolMatch && !aSymbolMatch) return 1;
+
+          // Finally alphabetical by symbol
+          return a.symbol.localeCompare(b.symbol);
+        });
+
+      setSearchResults(filteredResults);
       setShowSearchResults(true);
     } catch (err) {
       console.error("Search error:", err);
-      setSearchError("Failed to search stocks. Please try again.");
+
+      if (err instanceof Error) {
+        if (err.name === "TimeoutError") {
+          setSearchError(
+            "Search timeout - please try again with a shorter query."
+          );
+        } else if (err.message.includes("fetch")) {
+          setSearchError("Network error - please check your connection.");
+        } else {
+          setSearchError(
+            err.message || "Failed to search stocks. Please try again."
+          );
+        }
+      } else {
+        setSearchError("Failed to search stocks. Please try again.");
+      }
+
       setSearchResults([]);
     } finally {
       setIsSearching(false);
@@ -67,12 +130,28 @@ export default function StockSearch({
   };
 
   /**
-   * Handle search input changes with debouncing
+   * Handle search input changes with improved debouncing
    */
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     setSearchQuery(query);
     setSearchError(null);
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced search
+    if (query.trim().length >= 2) {
+      // Only search if query is at least 2 characters
+      searchTimeoutRef.current = setTimeout(() => {
+        searchSymbols(query);
+      }, 300); // 300ms debounce
+    } else {
+      setSearchResults([]);
+      setShowSearchResults(false);
+    }
   };
 
   /**
@@ -105,7 +184,6 @@ export default function StockSearch({
       addFavorite({
         symbol: stockData.metadata.symbol,
         name: stockData.metadata.symbol,
-        addedAt: new Date().toISOString(),
         lastPrice: stockData.data[0]?.close,
       });
 
@@ -133,6 +211,12 @@ export default function StockSearch({
     setSearchError(null);
     setSearchResults([]);
     setShowSearchResults(false);
+
+    // Clear any pending search timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
   };
 
   /**
@@ -144,20 +228,40 @@ export default function StockSearch({
   };
 
   /**
-   * Handle form submission for direct symbol entry
+   * Handle form submission - just trigger search, don't auto-select
    */
   const handleSymbolSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
-    const newSymbol = formData.get("symbol") as string;
+    const searchTerm = formData.get("symbol") as string;
 
-    if (newSymbol) {
-      const symbolOnly = newSymbol.split(" ")[0].toUpperCase().trim();
-      if (symbolOnly) {
-        handleSelectSearchResult(symbolOnly, symbolOnly);
-      }
+    if (searchTerm && searchTerm.trim().length >= 2) {
+      // Just search with the exact input, don't auto-modify or select
+      searchSymbols(searchTerm.trim());
     }
   };
+
+  /**
+   * Handle clicking outside search results to close dropdown
+   */
+  const handleDocumentClick = (e: MouseEvent) => {
+    const searchContainer = document.querySelector(".search-container");
+    if (searchContainer && !searchContainer.contains(e.target as Node)) {
+      setShowSearchResults(false);
+    }
+  };
+
+  // Add event listener for clicking outside
+  useEffect(() => {
+    document.addEventListener("click", handleDocumentClick);
+    return () => {
+      document.removeEventListener("click", handleDocumentClick);
+      // Cleanup timeout on unmount
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Combine errors from search and stock fetching
   const displayError = searchError || stockError;
@@ -192,16 +296,21 @@ export default function StockSearch({
             Add New Stock to Favorites
           </h2>
 
+          <p className="text-sm text-gray-600 mb-4">
+            Search by company name, stock symbol, or WKN (e.g., "Apple", "AAPL",
+            "865985")
+          </p>
+
           {/* Search Form */}
           <form
             onSubmit={handleSymbolSubmit}
-            className="flex gap-2 max-w-md relative"
+            className="flex gap-2 max-w-md relative search-container"
           >
             <div className="flex-1 relative">
               <input
                 type="text"
                 name="symbol"
-                placeholder="Search stocks (e.g., AAPL, Apple, Tesla)"
+                placeholder="Search: Tesla, TSLA, Netflix, NFLX..."
                 className="border border-gray-300 rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={searchQuery}
                 onChange={handleSearchInputChange}
@@ -213,29 +322,46 @@ export default function StockSearch({
               {showSearchResults && (
                 <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-b-md shadow-lg z-10 max-h-60 overflow-y-auto">
                   {isSearching ? (
-                    <div className="p-3 text-gray-500">Searching...</div>
+                    <div className="p-3 text-gray-500 flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                      Searching...
+                    </div>
                   ) : searchResults.length > 0 ? (
-                    searchResults.map((result) => (
-                      <div
-                        key={result.symbol}
-                        className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        onClick={() =>
-                          handleSelectSearchResult(result.symbol, result.name)
-                        }
-                      >
-                        <div className="font-semibold text-blue-600">
-                          {result.symbol}
+                    searchResults.slice(0, 10).map(
+                      (
+                        result // Limit to 10 results
+                      ) => (
+                        <div
+                          key={`${result.symbol}-${result.region}`}
+                          className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          onClick={() =>
+                            handleSelectSearchResult(result.symbol, result.name)
+                          }
+                        >
+                          <div className="font-semibold text-blue-600">
+                            {result.symbol}
+                          </div>
+                          <div className="text-sm text-gray-600 truncate">
+                            {result.name}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {result.region} • {result.currency}
+                            {result.type && ` • ${result.type}`}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-600 truncate">
-                          {result.name}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {result.region} • {result.currency}
-                        </div>
+                      )
+                    )
+                  ) : searchQuery.trim().length >= 2 ? (
+                    <div className="p-3 text-gray-500">
+                      No results found for "{searchQuery}"
+                      <div className="text-xs mt-1">
+                        Try searching by company name or stock symbol
                       </div>
-                    ))
+                    </div>
                   ) : (
-                    <div className="p-3 text-gray-500">No results found</div>
+                    <div className="p-3 text-gray-500">
+                      Type at least 2 characters to search
+                    </div>
                   )}
                 </div>
               )}
