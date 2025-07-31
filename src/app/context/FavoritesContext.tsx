@@ -1,99 +1,73 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from "react";
-import { FavoriteStock, FavoritesContextType } from "@/lib/types/favorites";
+import React, { createContext, useContext, useEffect } from "react";
+import { useFavoritesManager, FavoriteStock } from "@/lib/util";
+import { FavoritesContextType } from "@/lib/types/favorites";
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(
   undefined
 );
 
-const FAVORITES_STORAGE_KEY = "stock-tracker-favorites";
+export function FavoritesProvider({ children }: { children: React.ReactNode }) {
+  const {
+    favorites,
+    favoritesLoading: loading,
+    favoritesError: error,
+    loadFavorites,
+    addToFavorites,
+    removeFromFavorites,
+    isFavorite,
+  } = useFavoritesManager();
 
-interface FavoritesProviderProps {
-  children: ReactNode;
-}
-
-export function FavoritesProvider({ children }: FavoritesProviderProps) {
-  const [favorites, setFavorites] = useState<FavoriteStock[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Load favorites from localStorage on mount
-  useEffect(() => {
+  // Wrapper functions to match the interface
+  const addFavorite = async (stock: Omit<FavoriteStock, "addedAt">) => {
     try {
-      const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
-      if (stored) {
-        const parsedFavorites = JSON.parse(stored) as FavoriteStock[];
-        setFavorites(parsedFavorites);
-      }
-    } catch (error) {
-      console.error("Error loading favorites from localStorage:", error);
-      // Reset localStorage if corrupted
-      localStorage.removeItem(FAVORITES_STORAGE_KEY);
-    } finally {
-      setLoading(false);
+      await addToFavorites(stock);
+    } catch (err) {
+      console.error("Error adding favorite:", err);
     }
-  }, []);
+  };
 
-  // Save favorites to localStorage whenever favorites change
+  const removeFavorite = async (symbol: string) => {
+    try {
+      await removeFromFavorites(symbol);
+    } catch (err) {
+      console.error("Error removing favorite:", err);
+    }
+  };
+
+  const refreshFavorites = async () => {
+    try {
+      await loadFavorites();
+    } catch (err) {
+      console.error("Error refreshing favorites:", err);
+    }
+  };
+
+  // Load favorites
   useEffect(() => {
-    if (!loading) {
-      try {
-        localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
-      } catch (error) {
-        console.error("Error saving favorites to localStorage:", error);
+    loadFavorites();
+  }, [loadFavorites]);
+
+  // Auto-refresh favorites every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading) {
+        loadFavorites().catch(console.error);
       }
-    }
-  }, [favorites, loading]);
+    }, 5 * 60 * 1000); // 5 minutes
 
-  // Add stock to favorite storage
-  const addFavorite = (stock: FavoriteStock) => {
-    setFavorites((prev) => {
-      // Check if already exists
-      const exists = prev.some((fav) => fav.symbol === stock.symbol);
-      if (exists) {
-        return prev;
-      }
-
-      const newFavorite: FavoriteStock = {
-        ...stock,
-        addedAt: new Date().toISOString(),
-      };
-      const newFavorites = [...prev, newFavorite];
-
-      return newFavorites;
-    });
-  };
-  // Remove existing favorite
-  const removeFavorite = (symbol: string) => {
-    setFavorites((prev) => {
-      const exists = prev.some((fav) => fav.symbol === symbol);
-      if (!exists) {
-        return prev;
-      }
-
-      const filtered = prev.filter((fav) => fav.symbol !== symbol);
-
-      return filtered;
-    });
-  };
-
-  // Check if stock set as favorite
-  const isFavorite = (symbol: string): boolean => {
-    return favorites.some((fav) => fav.symbol === symbol);
-  };
+    return () => clearInterval(interval);
+  }, [loading, loadFavorites]);
 
   const value: FavoritesContextType = {
     favorites,
+    loading,
+    error,
     addFavorite,
     removeFavorite,
     isFavorite,
-    loading,
+    refreshFavorites,
   };
 
   return (
@@ -103,7 +77,6 @@ export function FavoritesProvider({ children }: FavoritesProviderProps) {
   );
 }
 
-// Custom hook to use favorites context
 export function useFavorites() {
   const context = useContext(FavoritesContext);
   if (context === undefined) {
