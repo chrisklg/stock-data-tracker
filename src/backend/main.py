@@ -14,7 +14,7 @@ from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import Adjustment
 from alpaca.trading import TradingClient
 
-from database import dbManager, FavoriteModel, StockPriceModel
+from database import db_manager, FavoriteModel, StockPriceModel
 
 load_dotenv()
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Start
     try:
-        await dbManager.initialize()
+        await db_manager.initialize()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    await dbManager.close()
+    await db_manager.close()
 
 
 app = FastAPI(title="Stock Data API", version="2.0.0", lifespan=lifespan)
@@ -95,9 +95,9 @@ class FavoriteRequest(BaseModel):
 
 # Database dependency
 async def get_db():
-    if not dbManager.pool:
-        await dbManager.initialize()
-    return dbManager
+    if not db_manager.pool:
+        await db_manager.initialize()
+    return db_manager
 
 
 class AlpacaDataClient:
@@ -336,7 +336,7 @@ async def root():
     return {
         "message": "Personal Stock Data API v2.0 with PostgreSQL",
         "status": "healthy",
-        "features": ["database_caching", "favorites_management", "scheduled_updates"],
+        "features": ["database_caching", "favorites_management"],
         "note": "Single-user personal stock tracker",
     }
 
@@ -390,7 +390,9 @@ async def get_favorites(db=Depends(get_db)):
 async def add_favorite(favorite: FavoriteRequest, db=Depends(get_db)):
     """Add stock to favorites"""
     try:
+        print(f"DEBUG: Adding favorite: {favorite.symbol}, {favorite.name}")  # Debug
         fav = await db.add_favorite(favorite.symbol, favorite.name)
+        print(f"DEBUG: Successfully added: {fav}")  # Debug
         return FavoriteResponse(
             symbol=fav.symbol,
             name=fav.name,
@@ -398,6 +400,8 @@ async def add_favorite(favorite: FavoriteRequest, db=Depends(get_db)):
             lastPrice=fav.last_price,
         )
     except Exception as e:
+        print(f"DEBUG: Error adding favorite: {e}")  # Debug
+        print(f"DEBUG: Error type: {type(e)}")  # Debug
         logger.error(f"Error adding favorite {favorite.symbol}: {e}")
         raise HTTPException(status_code=500, detail="Failed to add favorite")
 
