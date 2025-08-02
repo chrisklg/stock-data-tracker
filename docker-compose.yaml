@@ -1,14 +1,12 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: stock_app_db
     environment:
-      POSTGRES_DB: stock_app
-      POSTGRES_USER: adminUser
-      POSTGRES_PASSWORD: qwe123
+      POSTGRES_DB: ${POSTGRES_DB:-stock_app}
+      POSTGRES_USER: ${POSTGRES_USER:-adminUser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qwe123}
     ports:
       - "5432:5432"
     volumes:
@@ -16,7 +14,7 @@ services:
       - ./src/backend/schema.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U adminUser -d stock_app"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-adminUser} -d ${POSTGRES_DB:-stock_app}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,12 +25,12 @@ services:
   backend:
     build:
       context: ./src/backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.backend
     container_name: stock_app_backend
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://adminUser:qwe123@postgres:5432/stock_app
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-adminUser}:${POSTGRES_PASSWORD:-qwe123}@postgres:5432/${POSTGRES_DB:-stock_app}
       - PYTHONPATH=/app
     volumes:
       - ./src/backend:/app
@@ -55,7 +53,7 @@ services:
   # Next.js Frontend
   frontend:
     build:
-      context: .
+      context: ./src/app
       dockerfile: Dockerfile.frontend
     container_name: stock_app_frontend
     ports:
