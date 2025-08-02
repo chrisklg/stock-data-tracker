@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: stock_app_db
+    environment:
+      POSTGRES_DB: stock_app
+      POSTGRES_USER: adminUser
+      POSTGRES_PASSWORD: qwe123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/backend/schema.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adminUser -d stock_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # Python Backend
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: stock_app_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://adminUser:qwe123@postgres:5432/stock_app
+      - PYTHONPATH=/app
+    volumes:
+      - ./src/backend:/app
+      - /app/__pycache__
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    develop:
+      watch:
+        - action: sync
+          path: ./src/backend
+          target: /app
+          ignore:
+            - __pycache__/
+            - "*.pyc"
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: stock_app_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - PYTHON_BACKEND_URL=http://backend:8000
+      - NODE_ENV=development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app-network
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /app
+          ignore:
+            - node_modules/
+            - .next/
+            - .git/
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge
