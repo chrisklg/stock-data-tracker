@@ -112,7 +112,7 @@ export default function Header() {
 
             {/* Current Time */}
             <div className="text-right">
-              <div className="text-white font-mono text-sm font-bold">
+              <div className="text-white font-mono text-sm font-bold" suppressHydrationWarning={true}>
                 {currentTime.toLocaleTimeString("en-US", {
                   hour12: false,
                   hour: "2-digit",
