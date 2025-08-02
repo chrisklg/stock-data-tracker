@@ -1,8 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useEffect } from "react";
-import { useFavoritesManager, FavoriteStock } from "@/lib/util";
-import { FavoritesContextType } from "@/lib/types/favorites";
+import { useFavoritesManager } from "@/lib/util";
+import { FavoritesContextType, FavoriteStock } from "@/lib/types/favorites";
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(
   undefined

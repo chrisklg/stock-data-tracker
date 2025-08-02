@@ -1,6 +1,6 @@
 "use client";
 
-import { useFavorites } from "@/app/context/FavoritesContext";
+import { useFavorites } from "@/app/provider/FavoritesProvider";
 import { Crown, X } from "lucide-react";
 
 interface FavoritesListProps {

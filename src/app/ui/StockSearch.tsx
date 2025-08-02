@@ -1,6 +1,6 @@
 import { SearchResult } from "@/lib/types/searchResult";
 import { useState, useEffect, useRef } from "react";
-import { useFavorites } from "../context/FavoritesContext";
+import { useFavorites } from "../provider/FavoritesProvider";
 import { useStockData } from "@/lib/util";
 
 interface StockSearchProps {

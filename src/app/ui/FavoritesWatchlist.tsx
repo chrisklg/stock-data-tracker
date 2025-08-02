@@ -1,4 +1,4 @@
-import { useFavorites } from "@/app/context/FavoritesContext";
+import { useFavorites } from "@/app/provider/FavoritesProvider";
 import { Crown, Plus } from "lucide-react";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 

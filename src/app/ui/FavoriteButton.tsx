@@ -2,7 +2,7 @@
 
 import { Crown } from "lucide-react";
 import { FavoriteStock } from "@/lib/types/favorites";
-import { useFavorites } from "../context/FavoritesContext";
+import { useFavorites } from "../provider/FavoritesProvider";
 
 interface FavoriteButtonProps {
   stock: {
