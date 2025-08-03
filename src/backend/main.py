@@ -359,7 +359,7 @@ class AlpacaDataClient:
             if price_data_for_db:
                 try:
                     db = await get_db()
-                    saved_count = await db.save_stock_prices(symbol, price_data_for_db)
+                    await db.save_stock_prices(symbol, price_data_for_db)
                 except Exception as e:
                     logger.error(f"Error caching data for {symbol}: {e}")
 

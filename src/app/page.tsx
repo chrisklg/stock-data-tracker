@@ -45,7 +45,7 @@ export default function Home() {
             <div className="flex items-center gap-3 mb-4">
               <BarChart3 className="w-6 h-6 text-green-500" />
               <h3 className="text-lg font-semibold text-gray-900">
-                Note: Only historical data available
+                Limitation: Alpaca API is limited for US stocks
               </h3>
             </div>
             <p className="text-gray-600">
