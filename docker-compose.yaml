@@ -1,8 +1,11 @@
+name: stock-app
+
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: stock_app_db
+    platform: linux/amd64
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-stock_app}
       POSTGRES_USER: ${POSTGRES_USER:-adminUser}
@@ -26,14 +29,16 @@ services:
     build:
       context: ./src/backend
       dockerfile: Dockerfile.backend
+      platforms:
+        - linux/amd64
+        - linux/arm64
     container_name: stock_app_backend
+    platform: linux/amd64  # Default platform for consistency
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-adminUser}:${POSTGRES_PASSWORD:-qwe123}@postgres:5432/${POSTGRES_DB:-stock_app}
       - PYTHONPATH=/app
-      - ALPACA_API_KEY=${ALPACA_API_KEY}
-      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
     volumes:
       - ./src/backend:/app
       - /app/__pycache__
@@ -57,12 +62,14 @@ services:
     build:
       context: ./src/backend
       dockerfile: Dockerfile.backend
+      platforms:
+        - linux/amd64
+        - linux/arm64
     container_name: stock_app_scheduler
+    platform: linux/amd64
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-adminUser}:${POSTGRES_PASSWORD:-qwe123}@postgres:5432/${POSTGRES_DB:-stock_app}
       - PYTHONPATH=/app
-      - ALPACA_API_KEY=${ALPACA_API_KEY}
-      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
     volumes:
       - ./src/backend:/app
       - scheduler_logs:/app/logs
@@ -82,9 +89,13 @@ services:
   # Frontend
   frontend:
     build:
-      context: ./src/app
+      context: .
       dockerfile: Dockerfile.frontend
+      platforms:
+        - linux/amd64
+        - linux/arm64
     container_name: stock_app_frontend
+    platform: linux/amd64 
     ports:
       - "3000:3000"
     environment:
@@ -112,7 +123,9 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
   scheduler_logs:
+    driver: local
 
 networks:
   app-network:

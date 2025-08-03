@@ -1,6 +1,10 @@
-FROM node:18-alpine
+FROM --platform=$BUILDPLATFORM node:18-alpine
 
 WORKDIR /app
+
+# Use build arguments for cross-compilation
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
 
 # Install pnpm
 RUN npm install -g pnpm
