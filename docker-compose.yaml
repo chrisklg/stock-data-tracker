@@ -32,6 +32,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-adminUser}:${POSTGRES_PASSWORD:-qwe123}@postgres:5432/${POSTGRES_DB:-stock_app}
       - PYTHONPATH=/app
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
     volumes:
       - ./src/backend:/app
       - /app/__pycache__
@@ -50,7 +52,34 @@ services:
             - __pycache__/
             - "*.pyc"
 
-  # Next.js Frontend
+  # Stock Data Scheduler
+  scheduler:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile.backend
+    container_name: stock_app_scheduler
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-adminUser}:${POSTGRES_PASSWORD:-qwe123}@postgres:5432/${POSTGRES_DB:-stock_app}
+      - PYTHONPATH=/app
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+    volumes:
+      - ./src/backend:/app
+      - scheduler_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+    command: ["python", "scheduler.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/scheduler.log') else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
   frontend:
     build:
       context: ./src/app
@@ -83,6 +112,7 @@ services:
 
 volumes:
   postgres_data:
+  scheduler_logs:
 
 networks:
   app-network:
