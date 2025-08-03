@@ -34,9 +34,24 @@ CREATE TABLE stock_prices (
     UNIQUE(stock_id, date)
 );
 
+CREATE TABLE IF NOT EXISTS scheduler_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_type VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    duration_seconds INTEGER,
+    result_data JSONB,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 
 -- Indexes for better performance
 CREATE INDEX idx_favorites_stock_id ON favorites(stock_id);
 CREATE INDEX idx_stock_prices_stock_date ON stock_prices(stock_id, date);
 CREATE INDEX idx_stock_prices_date ON stock_prices(date);
 CREATE INDEX idx_stocks_symbol ON stocks(symbol);
+CREATE INDEX IF NOT EXISTS idx_scheduler_logs_job_date ON scheduler_logs(job_type, DATE(started_at));
+CREATE INDEX IF NOT EXISTS idx_scheduler_logs_status ON scheduler_logs(status);
+
