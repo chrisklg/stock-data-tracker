@@ -273,6 +273,119 @@ class AlpacaDataClient:
                 status_code=500, detail=f"Failed to fetch data for {symbol}"
             )
 
+    async def get_daily_stock_data_range(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> ProcessedStockResponse:
+        """Fetch daily stock data for a specific date range"""
+        try:
+            logger.info(
+                f"Fetching data for {symbol} from {start_date.date()} to {end_date.date()}"
+            )
+
+            request_params = StockBarsRequest(
+                symbol_or_symbols=symbol.upper(),
+                timeframe=cast(TimeFrame, TimeFrame.Day),
+                start=start_date,
+                end=end_date,
+                limit=1000,  # High limit
+                adjustment=Adjustment.RAW,
+            )
+            bars = self.historical_client.get_stock_bars(request_params)
+
+            # Extract symbol data
+            symbol_data = None
+            if hasattr(bars, "data"):
+                bars_data = bars.data  # type: ignore
+                if symbol.upper() in bars_data:
+                    symbol_data = bars_data[symbol.upper()]
+            elif hasattr(bars, "__iter__"):
+                try:
+                    for symbol_key in bars:
+                        if symbol_key.upper() == symbol.upper():  # type: ignore
+                            symbol_data = bars[symbol_key]  # type: ignore
+                            break
+                except Exception:
+                    pass
+
+            if symbol_data is None:
+                logger.warning(f"No data found for symbol {symbol} in date range")
+                # Return empty response instead of error
+                metadata = StockMetadata(
+                    symbol=symbol.upper(),
+                    lastRefreshed=start_date.strftime("%Y-%m-%d"),
+                    timeZone="US/Eastern",
+                )
+                return ProcessedStockResponse(metadata=metadata, data=[])
+
+            # Process and cache the data
+            daily_data = []
+            price_data_for_db = []
+
+            for bar in symbol_data:
+                timestamp = int(bar.timestamp.timestamp())
+                date_str = bar.timestamp.strftime("%Y-%m-%d")
+
+                daily_data.append(
+                    DailyStockData(
+                        date=date_str,
+                        open=float(bar.open),
+                        high=float(bar.high),
+                        low=float(bar.low),
+                        close=float(bar.close),
+                        volume=int(bar.volume),
+                        time=timestamp,
+                    )
+                )
+
+                # Prepare data for database storage
+                price_data_for_db.append(
+                    {
+                        "date": bar.timestamp.date(),
+                        "open": float(bar.open),
+                        "high": float(bar.high),
+                        "low": float(bar.low),
+                        "close": float(bar.close),
+                        "volume": int(bar.volume),
+                    }
+                )
+
+            # Sort by date (newest first)
+            daily_data.sort(key=lambda x: x.date, reverse=True)
+
+            # Cache data in database
+            if price_data_for_db:
+                try:
+                    db = await get_db()
+                    saved_count = await db.save_stock_prices(symbol, price_data_for_db)
+                except Exception as e:
+                    logger.error(f"Error caching data for {symbol}: {e}")
+
+            # Create metadata
+            metadata = StockMetadata(
+                symbol=symbol.upper(),
+                lastRefreshed=(
+                    daily_data[0].date
+                    if daily_data
+                    else start_date.strftime("%Y-%m-%d")
+                ),
+                timeZone="US/Eastern",
+            )
+
+            return ProcessedStockResponse(metadata=metadata, data=daily_data)
+
+        except Exception as e:
+            logger.error(f"Error fetching range data for {symbol}: {e}")
+            # Return empty response instead of raising error
+            metadata = StockMetadata(
+                symbol=symbol.upper(),
+                lastRefreshed=start_date.strftime("%Y-%m-%d"),
+                timeZone="US/Eastern",
+            )
+            return ProcessedStockResponse(metadata=metadata, data=[])
+
     def search_symbols(self, keywords: str) -> List[AssetInfo]:
         """Search for stock symbols by keywords"""
         try:
